@@ -18,10 +18,11 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/time.h>
 
 #define MAX_CONNECTIONS 100
 #define MAX_PACKET_BYTES 1000
-
+#define TIMEOUT 2
 char *file_buffer(char *filename, int *datalen){
     FILE *fd;
     if ( ( fd = fopen(filename, "rb") ) == NULL ){
@@ -40,7 +41,7 @@ char *file_buffer(char *filename, int *datalen){
 int main(int argc, char **argv)//PORT, FILENAME, N, PROB
 {
     if(argc < 5){
-        printf("\nInvalid arguments. Expected: port, filename, number of files N, loss probability: 0 < prob < 1\n");
+        printf("\nInvalid arguments. Usage: %s <port> <filename> <number of files N> <loss probability (0 < p < 1)>\n", argv[0]);
         //exit(-1);
     }
     //unsigned PORT = atoi(argv[1]);
@@ -85,8 +86,18 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
     }
 
     int one = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-
+    struct timeval t;
+    t.tv_sec = TIMEOUT/1000;
+    t.tv_usec = TIMEOUT;
+    if ( (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&t, sizeof(struct timeval))) < 0){
+        perror("setsockopt()");
+        exit(-1);
+    }
+    if ( (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one))) < 0){
+        perror("setsockopt()");
+        exit(-1);
+    }
+    
     Connection *c;
     if ( (c = rdp_accept(&sockfd)) == NULL ){
         perror("Connection FLAG is probably wrong");

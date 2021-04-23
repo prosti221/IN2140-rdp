@@ -19,11 +19,15 @@ typedef struct Connection{
     struct sockaddr_in client_addr; //recv_addr -> client
 }Connection;
 
+Packet *create_packets(char* data_bfr, int *total_packets); //Takes a data buffer from file and splits it into packets.
+
 char *serialize(Packet *packet, unsigned int *size);
 
 struct Packet *de_serialize(char *d, unsigned int size);
 
 struct Connection *rdp_accept(int *sockfd);
+
+void write_file(Packet *packets);
 
 void send_ACK(int *sockfd, int ID, int recv_ID, int packet_nb, struct sockaddr_in *dest);
 

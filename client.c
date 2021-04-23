@@ -15,6 +15,8 @@ int main(int argc, char **argv)
 {
     if(argc < 4){
         printf("\nInvalid arguments. Arguments expected are: IP/hostname, port, loss probability: 0 < prob < 1\n");
+        printf("\nInvalid arguments. Usage: %s <ip> <port> <loss probability (0 < p < 1)>\n", argv[0]);
+
         //exit(-1);
     }
 
@@ -22,8 +24,9 @@ int main(int argc, char **argv)
     int sock;
     //unsigned short port = htons(atoi(argv[2]));
     unsigned short port = 8080;
-    struct sockaddr_in server;
+    struct sockaddr_in server, from;
     socklen_t server_len = sizeof(server);
+    socklen_t from_len = sizeof(from_len);
     //set_loss_probability(prob); 
     
     if( (sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ){
@@ -56,7 +59,7 @@ int main(int argc, char **argv)
    
     Packet *ack = malloc(sizeof(Packet)); 
     char buffer[sizeof(Packet)];
-    int bytes = recvfrom(sock, buffer, sizeof(Packet), 0, (struct sockaddr*)&server, &server_len);
+    int bytes = recvfrom(sock, buffer, sizeof(Packet), 0, (struct sockaddr*)&from, &from_len);
     if (bytes < 0){
         perror("error in recvfrom() client side");
         exit(1);

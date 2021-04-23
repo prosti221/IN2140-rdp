@@ -30,9 +30,9 @@ struct Packet *de_serialize(char *d, unsigned int size){
 }
 
 void send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct sockaddr_in *dest){
-    //struct sockaddr_in *test = &(c->client_addr);                               
     printf("Stored port: %d\n", htons(dest->sin_port));  
     Packet *p = malloc(sizeof(Packet));
+    struct sockaddr_in d = *dest;
     p->flags = 0x01;
     p->metadata = 0;
     p->sender_id = sender_ID;
@@ -40,7 +40,7 @@ void send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct soc
     p->ackseq = packet_nb;
     unsigned int size = 0;
     char* serial = serialize(p, &size);
-    if (sendto(*sockfd, serial, sizeof(Packet), 0, (const struct sockaddr *)&dest, (socklen_t)sizeof(*dest)) < 0) {
+    if (sendto(*sockfd, serial, sizeof(Packet), 0, (const struct sockaddr *)&d, sizeof(d)) < 0) {
         perror("sendto()");
         exit(-1);
     }      
