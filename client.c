@@ -14,13 +14,16 @@
 int main(int argc, char **argv)                                                  
 {
     if(argc < 4){
-        printf("\nInvalid arguments. Arguments expected are: IP/hostname, port, loss probability: 0 < prob < 1\n");
-        printf("\nInvalid arguments. Usage: %s <ip> <port> <loss probability (0 < p < 1)>\n", argv[0]);
-
+        printf("\nUsage: %s <ip> <port> <loss probability>", argv[0]);
         //exit(-1);
     }
-
-    float prob = strtof(argv[3], NULL);
+    float prob; 
+    if ( (strtof(argv[3], NULL) ) < 0 || (strtof(argv[3], NULL) > 1 ) ){
+        printf("\nInvalid loss probability. Excpected: 0 < p < 1 ");
+        //exit(-1);
+    }
+    
+    
     int sock;
     //unsigned short port = htons(atoi(argv[2]));
     unsigned short port = 8080;
@@ -55,21 +58,15 @@ int main(int argc, char **argv)
         perror("sendto()");
         exit(2);
     }
-    free(serial);
    
-    Packet *ack = malloc(sizeof(Packet)); 
-    char buffer[sizeof(Packet)];
-    int bytes = recvfrom(sock, buffer, sizeof(Packet), 0, (struct sockaddr*)&from, &from_len);
-    if (bytes < 0){
-        perror("error in recvfrom() client side");
-        exit(1);
+    //wait_ACK(&sock, serial, 0, 1, &server);
+    if ( (wait_rdp_accept(&sock, serial, 234, &server) ) != 0){
+        printf("#### Terminating client ####\n");
+        exit(-1);
     }
-    printf("BYTES: %d", bytes);
-    ack = de_serialize(buffer, sizeof(Packet));
-    print_packet(ack);
-
+    
+    free(serial);
     free(connect);
-    free(ack);
     close(sock);
 
 }

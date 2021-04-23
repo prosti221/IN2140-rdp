@@ -16,6 +16,7 @@ typedef struct __attribute__((packed)) Packet{
 
 typedef struct Connection{
     int client_id, server_id; //server id is 0
+    char packet_seq; //Last packet recived
     struct sockaddr_in client_addr; //recv_addr -> client
 }Connection;
 
@@ -25,11 +26,15 @@ char *serialize(Packet *packet, unsigned int *size);
 
 struct Packet *de_serialize(char *d, unsigned int size);
 
-struct Connection *rdp_accept(int *sockfd);
+struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connected); //Listens for connection requests and sends accept/refuse connection packet back
 
-void write_file(Packet *packets);
+void write_file(Packet *packets); //Takes collection of packets and writes to file
 
-void send_ACK(int *sockfd, int ID, int recv_ID, int packet_nb, struct sockaddr_in *dest);
+void send_ACK(int *sockfd, int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *dest); //sends ACK
+
+void wait_ACK(int *sockfd,  char *serial,int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *resend); //Waits for ACK
+
+int wait_rdp_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *resend); //Client waits for rdp_accept response, returns 0 if accepted, returns -1 if refused.
 
 void print_packet(Packet *packet);
 

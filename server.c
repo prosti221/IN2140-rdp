@@ -41,7 +41,12 @@ char *file_buffer(char *filename, int *datalen){
 int main(int argc, char **argv)//PORT, FILENAME, N, PROB
 {
     if(argc < 5){
-        printf("\nInvalid arguments. Usage: %s <port> <filename> <number of files N> <loss probability (0 < p < 1)>\n", argv[0]);
+        printf("\nUsage: %s <port> <filename> <number of files> <loss probability>\n", argv[0]);
+        //exit(-1);
+    }
+    float prob = strtof(argv[3], NULL);
+    if ( prob < 0 || prob > 1 ){
+        printf("\nInvalid loss probability. Excpected: 0 < p < 1 ");
         //exit(-1);
     }
     //unsigned PORT = atoi(argv[1]);
@@ -50,12 +55,12 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_length = sizeof(client_addr);
     //All connections
-    Connection *connections = malloc(sizeof(Connection) * MAX_CONNECTIONS);
+    int connected = 0;
+    Connection **connections = malloc(sizeof(Connection) * MAX_CONNECTIONS);
     //Storing file in databuffer and allocating memory to it
     int datalen = 0;
     //char *data_buffer = file_buffer(fd,argv[2], &datalen);
     char *data_buffer = file_buffer("file.dat", &datalen);
-    printf("Lenght of data buffer: %d", datalen);
     //Number of packets needed is datalen/MAX_PACKET_BYTES
     int packet_num = datalen/MAX_PACKET_BYTES;
     
@@ -63,7 +68,6 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
     int N = atoi(argv[2]);
 
     //Setting loss probability
-    float prob = strtof(argv[3], NULL);                                           
     //set_loss_probability(prob);
     
     //setting up the socket
@@ -97,19 +101,19 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
         perror("setsockopt()");
         exit(-1);
     }
-    
+   
     Connection *c;
-    if ( (c = rdp_accept(&sockfd)) == NULL ){
-        perror("Connection FLAG is probably wrong");
-        exit(-1);
-    }
-    struct sockaddr_in *test = &c->client_addr;
-    printf("Stored port: %d\n", htons(test->sin_port)); 
-    send_ACK(&sockfd, 0, c->client_id, 1, &c->client_addr);
+    while(1){ 
+        if ( (c = rdp_accept(&sockfd, connections, &connected)) != NULL ){
+            printf("\n[+] Connection accepted: client -> %d", c->client_id);  
+            connections[connected] = c;
+            connected++;
+            struct sockaddr_in *test = &c->client_addr;
+            //send_ACK(&sockfd, 0, c->client_id, 1, &c->client_addr);
+        }
 
-    print_connection(c);
-    close(sockfd);
-    free(c);
-    free(connections);
-    free(data_buffer);
+    }
+        close(sockfd);
+        free(connections);
+        free(data_buffer);
 }
