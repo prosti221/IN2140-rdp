@@ -9,8 +9,10 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/time.h>
 
 #define MAX_PACKET_BYTES 10
+#define TIMEOUT 1
 
 int main(int argc, char **argv)                                                  
 {
@@ -38,6 +40,13 @@ int main(int argc, char **argv)
         perror("Socket error");
         exit(-1);
     }
+    struct timeval t;
+    t.tv_sec = TIMEOUT;                                                          
+    t.tv_usec = TIMEOUT/1000;    
+    if ( (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&t, sizeof(struct timeval))) < 0){
+        perror("setsockopt()");
+        exit(-1);
+    }    
    
     memset(&server, 0, sizeof(server));
 
