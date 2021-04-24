@@ -16,21 +16,24 @@ typedef struct __attribute__((packed)) Packet{
 
 typedef struct Connection{
     int client_id, server_id; //server id is 0
-    char packet_seq; //Last packet recived
+    char packet_seq; //Last data packet recived by client
     struct sockaddr_in client_addr; //recv_addr -> client
 }Connection;
 
-Packet *create_packets(char* data_bfr, int *total_packets); //Takes a data buffer from file and splits it into packets.
 
-char *serialize(Packet *packet, unsigned int *size);
+char *serialize(Packet *packet); //
 
-struct Packet *de_serialize(char *d, unsigned int size);
+struct Packet *de_serialize(char *d);
+
+Packet **create_packets(char* data_bfr, int data_len, int max_bytes, int *total_packets); //Takes a data buffer and splits it into data packets with flags 0x04 and correct pktseq.
 
 struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connected); //Listens for connection requests and sends accept/refuse connection packet back
 
 void write_file(Packet *packets); //Takes collection of packets and writes to file
 
 void send_ACK(int *sockfd, int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *dest); //sends ACK
+
+void send_data(int *sockfd, int recv_ID, int sender_ID, struct sockaddr_in *dest, Packet *data); //sends data packets
 
 void wait_ACK(int *sockfd,  char *serial,int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *resend); //Waits for ACK
 

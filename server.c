@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include "rdp.h"
 #include "server.h"
-#include "res/send_packet.h"
+#include "send_packet.h"
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -21,8 +21,8 @@
 #include <sys/time.h>
 
 #define MAX_CONNECTIONS 100
-#define MAX_PACKET_BYTES 1000
-#define TIMEOUT 2
+#define MAX_PACKET_BYTES 10
+#define TIMEOUT 2 
 char *file_buffer(char *filename, int *datalen){
     FILE *fd;
     if ( ( fd = fopen(filename, "rb") ) == NULL ){
@@ -52,6 +52,7 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
     //unsigned PORT = atoi(argv[1]);
     unsigned short PORT = 8080;
     int sockfd;
+    Packet **packs = NULL;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_length = sizeof(client_addr);
     //All connections
@@ -60,15 +61,15 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
     //Storing file in databuffer and allocating memory to it
     int datalen = 0;
     //char *data_buffer = file_buffer(fd,argv[2], &datalen);
-    char *data_buffer = file_buffer("file.dat", &datalen);
+    char *data_buffer = file_buffer("README.txt", &datalen);
     //Number of packets needed is datalen/MAX_PACKET_BYTES
-    int packet_num = datalen/MAX_PACKET_BYTES;
-    
+    int packet_num = datalen/MAX_PACKET_BYTES; 
+    packs = create_packets(data_buffer, datalen, MAX_PACKET_BYTES, &packet_num);
     //N is number of files to transfer before terminating
     int N = atoi(argv[2]);
 
     //Setting loss probability
-    //set_loss_probability(prob);
+    set_loss_probability(0.5);
     
     //setting up the socket
     if( (sockfd = socket(PF_INET, SOCK_DGRAM, 0)) < 0 ){
@@ -91,8 +92,8 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
 
     int one = 1;
     struct timeval t;
-    t.tv_sec = TIMEOUT/1000;
-    t.tv_usec = TIMEOUT;
+    t.tv_sec = TIMEOUT;
+    t.tv_usec = TIMEOUT/1000;
     if ( (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&t, sizeof(struct timeval))) < 0){
         perror("setsockopt()");
         exit(-1);
@@ -103,17 +104,37 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
     }
    
     Connection *c;
-    while(1){ 
+    while(1){
         if ( (c = rdp_accept(&sockfd, connections, &connected)) != NULL ){
-            printf("\n[+] Connection accepted: client -> %d", c->client_id);  
+            printf("\n[+] CONNECTED: %d --> %d\n", c->server_id, c->client_id);
             connections[connected] = c;
             connected++;
-            struct sockaddr_in *test = &c->client_addr;
-            //send_ACK(&sockfd, 0, c->client_id, 1, &c->client_addr);
         }
 
+        for(int i = 0; i < connected; i++){
+            if(connections[i]->packet_seq < packet_num){
+                Packet *data = packs[(int)connections[i]->packet_seq];
+                data->sender_id = connections[i]->server_id;
+                data->recv_id = connections[i]->client_id;
+                print_packet(data);
+                send_data(&sockfd,connections[i]->client_id, connections[i]->server_id, &connections[i]->client_addr, data);
+                char *resend = serialize(data);
+                wait_ACK(&sockfd, resend, data->recv_id, data->sender_id, data->pktseq, &connections[i]->client_addr);  
+                connections[i]->packet_seq += 1; 
+            }
+        }
     }
-        close(sockfd);
-        free(connections);
-        free(data_buffer);
+    
+    
+    
+    close(sockfd);
+    for (int i = 0; i < connected; i++){
+        free(connections[i]);
+    }
+    free(connections);
+    for (int i = 0; i < packet_num; i++){
+        free(packs[i]);
+    }
+    free(packs);
+    free(data_buffer);
 }
