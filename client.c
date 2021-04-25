@@ -12,7 +12,7 @@
 #include <sys/time.h>
 
 #define MAX_PACKET_BYTES 10
-#define TIMEOUT 1
+#define TIMEOUT 100000
 
 int main(int argc, char **argv)                                                  
 {
@@ -41,8 +41,8 @@ int main(int argc, char **argv)
         exit(-1);
     }
     struct timeval t;
-    t.tv_sec = TIMEOUT;                                                          
-    t.tv_usec = TIMEOUT/1000;    
+    t.tv_sec = 0;                                                          
+    t.tv_usec = TIMEOUT;    
     if ( (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&t, sizeof(struct timeval))) < 0){
         perror("setsockopt()");
         exit(-1);
@@ -58,7 +58,7 @@ int main(int argc, char **argv)
     Packet *connect = malloc(sizeof(Packet));
     *connect = (Packet){.metadata=0, .ackseq=0, .unassigned=0, .pktseq=0, .flags=0x01, .recv_id=0, .sender_id=234}; 
     char *serial = serialize(connect);
-    if (send_packet(sock, serial, sizeof(Packet), 0, (const struct sockaddr *)&server, sizeof(server)) < 0) { //Sending connect request to server
+    if (send_packet(sock, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&server, sizeof(server)) < 0) { //Sending connect request to server
         perror("sendto()");
         exit(2);
     }
@@ -73,16 +73,17 @@ int main(int argc, char **argv)
     }
     while(1){
         char buffer[sizeof(Packet) + MAX_PACKET_BYTES];
-        int bytes = recvfrom(sock, buffer, sizeof(Packet) + MAX_PACKET_BYTES, 0, (struct sockaddr*)&from, &from_len);
+        int bytes = recvfrom(sock, buffer, sizeof(Packet) + MAX_PACKET_BYTES + 1, 0, (struct sockaddr*)&from, &from_len);
         if (bytes > 0){                                                         
             Packet *p = de_serialize(buffer);                                   
             if(p->flags == 0x04 && p->sender_id == 0 && p->recv_id == 234 && p->pktseq > current_packet){
                 printf("\n[+]Packet %d recieved from %d\n", p->pktseq, p->sender_id);
                 current_packet = p->pktseq;
                 print_packet(p);              
+                send_ACK(&sock, p->recv_id, p->sender_id, current_packet, &server); 
             }else if(p->flags == 0x04 && p->sender_id == 0 && p->recv_id == 234 && p->pktseq <= current_packet){
                 send_ACK(&sock, p->recv_id, p->sender_id, current_packet, &server); 
-            }                
+            }
             free(p);                                                            
         }               
     }

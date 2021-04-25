@@ -97,7 +97,7 @@ int wait_rdp_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *
             }
             free(p);
         }
-        if (send_packet(*sockfd, serial, sizeof(Packet), 0, (const struct sockaddr *)&re, sizeof(re)) < 0) {
+        if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&re, sizeof(re)) < 0) {
             perror("sendto()");
             exit(-1);
         }        
@@ -109,7 +109,7 @@ void send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct soc
     struct sockaddr_in d = *dest;
     *p = (Packet){.flags=0x08, .metadata=0, .sender_id=sender_ID, .recv_id=recv_ID, .ackseq=packet_nb, .pktseq=0, .unassigned=0};
     char* serial = serialize(p);
-    if (send_packet(*sockfd, serial, sizeof(Packet), 0, (const struct sockaddr *)&d, sizeof(d)) < 0) {
+    if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&d, sizeof(d)) < 0) {
         perror("sendto()");
         exit(-1);
     }
@@ -121,7 +121,7 @@ void send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct soc
 void send_data(int *sockfd, int recv_ID, int sender_ID, struct sockaddr_in *dest, Packet *data){
     char *serial = serialize(data);
     struct sockaddr_in d = *dest;
-    if (send_packet(*sockfd, serial, sizeof(Packet) + data->metadata, 0, (const struct sockaddr *)&d, sizeof(d)) < 0) {
+    if (send_packet(*sockfd, (const char*)serial, sizeof(Packet) + data->metadata, 0, (const struct sockaddr *)&d, sizeof(d)) < 0) {
         perror("sendto()");
         exit(-1);
     }
@@ -147,7 +147,7 @@ void wait_ACK(int *sockfd, char *serial, int sender_ID, int recv_ID, int packet_
             }
             free(p);
         }
-        if (send_packet(*sockfd, serial, sizeof(Packet), 0, (const struct sockaddr *)&re, sizeof(re)) < 0) {
+        if (send_packet(*sockfd, (const char*)serial, sizeof(Packet) + MAX_PACKET_BYES, 0, (const struct sockaddr *)&re, sizeof(re)) < 0) {
             perror("sendto()");
             exit(-1);
         }        
@@ -170,7 +170,7 @@ struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connec
                 if(connections[i]->client_id == p->sender_id){
                     *ret = (Packet){.flags=0x20, .metadata=0, .sender_id=p->recv_id, .recv_id=p->sender_id, .ackseq=0, .pktseq=0, .unassigned = 0};
                     char *serial = serialize(ret);
-                    if (send_packet(*sockfd, serial, sizeof(Packet), 0, (const struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
+                    if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
                         perror("sendto()");                                                                                        
                         exit(-1);                                                                                                  
                     }
@@ -183,7 +183,7 @@ struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connec
             }
             *ret = (Packet){.flags=0x10, .metadata=0, .sender_id=p->recv_id, .recv_id=p->sender_id, .ackseq=0, .pktseq=0, .unassigned=0};
             char *serial = serialize(ret);
-            if (send_packet(*sockfd, serial, sizeof(Packet), 0, (const struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
+            if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
                 perror("sendto()");                                                                                        
                 exit(-1);                                                                                                  
             }

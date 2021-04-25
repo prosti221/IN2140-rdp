@@ -22,16 +22,16 @@
 
 #define MAX_CONNECTIONS 100
 #define MAX_PACKET_BYTES 10
-#define TIMEOUT 2 
-char *file_buffer(char *filename, int *datalen){
+#define TIMEOUT 100000 //in microseconds 
+char *file_buffer(char *filename, int *datalen){    //Creates a buffer for file data and stores it in memory
     FILE *fd;
     if ( ( fd = fopen(filename, "rb") ) == NULL ){
         perror("File does not exist.");
-        //exit(-1);
+        exit(-1);
     }
-    fseek(fd, 0, SEEK_END);
-    *datalen = ftell(fd);
-    rewind(fd);
+    fseek(fd, 0, SEEK_END); //Go to end of file
+    *datalen = ftell(fd);   //get the size of buffer
+    rewind(fd);             //rewind
     char *data_buffer = (char*)malloc(*datalen); //REMEMBER TO CHECK RETURN
     fread(data_buffer, *datalen, 1, fd);
     fclose(fd);
@@ -92,8 +92,8 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
 
     int one = 1;
     struct timeval t;
-    t.tv_sec = TIMEOUT;
-    t.tv_usec = TIMEOUT/1000;
+    t.tv_sec = 0;
+    t.tv_usec = TIMEOUT;
     if ( (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&t, sizeof(struct timeval))) < 0){
         perror("setsockopt()");
         exit(-1);
@@ -105,14 +105,14 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
    
     Connection *c;
     while(1){
-        if ( (c = rdp_accept(&sockfd, connections, &connected)) != NULL ){
+        if ( (c = rdp_accept(&sockfd, connections, &connected)) != NULL ){ //Listen for incoming connections
             printf("\n[+] CONNECTED: %d --> %d\n", c->server_id, c->client_id);
-            connections[connected] = c;
+            connections[connected] = c; //Add connection to current connections 
             connected++;
         }
 
-        for(int i = 0; i < connected; i++){
-            if(connections[i]->packet_seq < packet_num){
+        for(int i = 0; i < connected; i++){ //For every ongoing connecions
+            if(connections[i]->packet_seq < packet_num){ //if there are still packets to send
                 Packet *data = packs[(int)connections[i]->packet_seq];
                 data->sender_id = connections[i]->server_id;
                 data->recv_id = connections[i]->client_id;
