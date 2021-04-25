@@ -39,7 +39,7 @@ Packet **create_packets(char* data_bfr, int data_len, int max_bytes, int *total_
         exit(-1);
     }
     Packet **packets;
-    if(data_len < max_bytes){
+    if(data_len < max_bytes){ //If data buffer fits in a single packet
         *total_packets = 1;
         packets = malloc(sizeof(Packet *));
         Packet *p = malloc(sizeof(Packet) + data_len);
@@ -49,27 +49,32 @@ Packet **create_packets(char* data_bfr, int data_len, int max_bytes, int *total_
         return packets; 
     }
     int r = 0; //Remainder 
-    if (data_len % max_bytes == 0){
+    if (data_len % max_bytes == 0){ //If the data buffer can be evenly split
         *total_packets = data_len / max_bytes;
-        packets = malloc(sizeof(Packet*) * (*total_packets));
+        packets = malloc(sizeof(Packet*) * (*total_packets) + 1); //Allocate memory for all even packets + terminating empty packet
     }else{
         r = data_len % max_bytes;
         *total_packets = (data_len - r)/max_bytes;
-        packets = malloc(sizeof(Packet*) * (*total_packets + 1));
+        packets = malloc(sizeof(Packet*) * (*total_packets + 2)); //Total packets = all evenly sized + 1 unevenly sized + 1 empty packet
     }
-    for(int i = 0; i < *total_packets; i++){
+    for(int i = 0; i < *total_packets; i++){ //Create all the even packets
         Packet *p = malloc(sizeof(Packet) + max_bytes);
         *p = (Packet){.flags=0x04, .pktseq=i, .ackseq=0, .unassigned=0, .sender_id=0, .recv_id=0, .metadata=max_bytes};
         memcpy(p->payload, data_bfr + (i * max_bytes) , max_bytes);
         packets[i] = p;
     }
-    if(r != 0){
+    if(r != 0){ //If the remainder is not 0, create the last uneven packet
         *total_packets += 1;
         Packet *p = malloc(sizeof(Packet) + r);
         *p = (Packet){.flags=0x04, .pktseq=*total_packets-1, .ackseq=0, .unassigned=0, .sender_id=0, .recv_id=0, .metadata=r};
         memcpy(p->payload, data_bfr + (data_len - r), r);
         packets[*total_packets-1] = p;
     }
+    //Add the final empty terminating packet
+    *total_packets +=1;
+    Packet *p = malloc(sizeof(Packet));
+    *p = (Packet){.flags=0x04, .pktseq=*total_packets-1, .ackseq=0, .unassigned=0, .sender_id=0, .recv_id=0, .metadata=0};
+    packets[*total_packets-1] = p;
     return packets;
 }
 
@@ -113,45 +118,54 @@ void send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct soc
         perror("sendto()");
         exit(-1);
     }
-    printf("\n[+] Sending ACK to %d\n", p->recv_id);    
     free(p);
     free(serial);
 
 }
-void send_data(int *sockfd, int recv_ID, int sender_ID, struct sockaddr_in *dest, Packet *data){
+
+void send_terminate(int *sockfd, int sender_ID, int recv_ID, struct sockaddr_in *dest){
+    Packet *p = malloc(sizeof(Packet));
+    struct sockaddr_in d = *dest;
+    *p = (Packet){.flags=0x02, .metadata=0, .sender_id=sender_ID, .recv_id=recv_ID, .ackseq=0, .pktseq=0, .unassigned=0};
+    char* serial = serialize(p);
+    if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&d, sizeof(d)) < 0) {
+        perror("sendto()");
+        exit(-1);
+    }
+    free(p);
+    free(serial);
+}
+
+void send_data(int *sockfd, struct sockaddr_in *dest, Packet *data){
     char *serial = serialize(data);
     struct sockaddr_in d = *dest;
     if (send_packet(*sockfd, (const char*)serial, sizeof(Packet) + data->metadata, 0, (const struct sockaddr *)&d, sizeof(d)) < 0) {
         perror("sendto()");
         exit(-1);
     }
-    printf("\n[+] Sending packet %d to client %d\n", data->pktseq, data->recv_id);
+    //printf("\n[+] Sending packet %d to client %d\n", data->pktseq, data->recv_id);
     free(serial);
 }
 
-void wait_ACK(int *sockfd, char *serial, int sender_ID, int recv_ID, int packet_nb, struct sockaddr_in *resend){ //sender ID is the one sending the ACK, while recv_ID is waiting
+int wait_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb){ //sender ID is the one sending the ACK, while recv_ID is waiting
     struct sockaddr_in from_addr;
     socklen_t from_length = sizeof(from_addr);
-    struct sockaddr_in re = *resend;
-    int ACK = 0;
     char buffer[sizeof(Packet)];
-    while(ACK == 0){
-        int bytes = recvfrom(*sockfd, buffer, sizeof(Packet) + MAX_PACKET_BYES, 0, (struct sockaddr*)&from_addr, &from_length);
-        if (bytes > 0){
-            Packet *p = de_serialize(buffer);
-            if(p->flags == 0x08 && p->sender_id == sender_ID && p->recv_id == recv_ID && p->ackseq == packet_nb){
-                printf("\n[+] ACK recieved by %d\n", p->sender_id);
-                ACK = 1;
-                free(p);
-                return;
-            }
+    int bytes = recvfrom(*sockfd, buffer, sizeof(Packet) + MAX_PACKET_BYES, 0, (struct sockaddr*)&from_addr, &from_length);
+    if (bytes > 0){
+        Packet *p = de_serialize(buffer);
+        if(p->flags == 0x08 && p->sender_id == sender_ID && p->recv_id == recv_ID && p->ackseq == packet_nb){
+            //printf("\n[+] ACK recieved by %d\n", p->sender_id);
             free(p);
+            return 0;
+        }else if(p->flags == 0x02 && p->sender_id == sender_ID && p->recv_id == recv_ID){
+            printf("\n[+] File delivered to %d\n", p->sender_id);
+            free(p);
+            return 1;
         }
-        if (send_packet(*sockfd, (const char*)serial, sizeof(Packet) + MAX_PACKET_BYES, 0, (const struct sockaddr *)&re, sizeof(re)) < 0) {
-            perror("sendto()");
-            exit(-1);
-        }        
+        free(p);
     }
+    return -1;
 }
 
 struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connected){

@@ -33,9 +33,11 @@ void write_file(Packet *packets); //Takes collection of packets and writes to fi
 
 void send_ACK(int *sockfd, int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *dest); //sends ACK
 
-void send_data(int *sockfd, int recv_ID, int sender_ID, struct sockaddr_in *dest, Packet *data); //sends data packets
+void send_terminate(int *sockfd, int recv_ID, int sender_ID, struct sockaddr_in *dest);
 
-void wait_ACK(int *sockfd,  char *serial,int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *resend); //Waits for ACK
+void send_data(int *sockfd, struct sockaddr_in *dest, Packet *data); //sends data packets
+
+int wait_ACK(int *sockfd, int recv_ID, int sender_ID, int packet_nb); //Waits for ACK
 
 int wait_rdp_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *resend); //Client waits for rdp_accept response, returns 0 if accepted, returns -1 if refused.
 

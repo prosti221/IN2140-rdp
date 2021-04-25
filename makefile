@@ -10,3 +10,4 @@ client: $(DEPS)
 
 clean: 
 	rm server client
+	rm -rf out/kernel-file-*
