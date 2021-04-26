@@ -16,7 +16,7 @@ typedef struct __attribute__((packed)) Packet{
 
 typedef struct Connection{
     int client_id, server_id; //server id is 0
-    char packet_seq; //Last data packet recived by client
+    unsigned char packet_seq, state; //packet_seq is the last data packet recived by client. State is whether connecion is active or not(1 or 0).
     struct sockaddr_in client_addr; //recv_addr -> client
 }Connection;
 

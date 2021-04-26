@@ -1,12 +1,3 @@
-//main loop
-   //1. Check if a new RDP connect request has arrived
-   //2. try to deliver next or final packet to each connected RDP client
-   //3. checks if an RDP connection has been closed
-   //4. if nothing has happened in any of these three cases(no new connection, no connection was closed, no packet could be sent to any connection),
-   //   we wait for a period
-   //   Here there are two implementation options:
-   //      a. Waits for one second before trying again
-   //      b. Use select() to wait until an event occurs 
 #include <stdio.h>
 #include "rdp.h"
 #include "server.h"
@@ -20,9 +11,15 @@
 #include <string.h>
 #include <sys/time.h>
 
+
 #define MAX_CONNECTIONS 100
-#define MAX_PACKET_BYTES 10
+#define MAX_PACKET_BYTES 1000
 #define TIMEOUT 1000 //in microseconds 
+
+#define NORM "\x1B[0m"
+#define RED "\x1B[31m"
+#define GREEN "\x1B[32m"
+
 char *file_buffer(char *filename, int *datalen){    //Creates a buffer for file data and stores it in memory
     FILE *fd;
     if ( ( fd = fopen(filename, "rb") ) == NULL ){
@@ -45,30 +42,28 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
         printf("\nUsage: %s <port> <filename> <number of files> <loss probability>\n", argv[0]);
         exit(-1);
     }
-    //Checking probability
+    //Checking probability range
     float prob = strtof(argv[4], NULL);
     if ( prob < 0 || prob > 1 ){
         printf("\nInvalid loss probability. Excpected: 0 < p < 1 ");
         exit(-1);
     }
     unsigned PORT = atoi(argv[1]);
-    //unsigned short PORT = 8080;
     int sockfd;
-    Packet **packs = NULL;
+    Packet **packs;
     struct sockaddr_in server_addr;
     //All connections
     int connected = 0;
-    Connection **connections = malloc(sizeof(Connection) * MAX_CONNECTIONS);
+    
+    Connection **connections = malloc(sizeof(Connection*) * MAX_CONNECTIONS);
     //Storing file in databuffer and allocating memory to it
     int datalen = 0;
     char *data_buffer = file_buffer(argv[2], &datalen);
-    //char *data_buffer = file_buffer("README.txt", &datalen);
     //Number of packets needed is datalen/MAX_PACKET_BYTES
     int packet_num = datalen/MAX_PACKET_BYTES; 
     packs = create_packets(data_buffer, datalen, MAX_PACKET_BYTES, &packet_num);
     //N is number of files to transfer before terminating
     int N = atoi(argv[3]);
-    //int N = 5;
     int served = 0;
 
     //Setting loss probability
@@ -105,49 +100,42 @@ int main(int argc, char **argv)//PORT, FILENAME, N, PROB
         exit(-1);
     }
    
-    Connection *c;
     while(1){
+    Connection *c;
         int wait = 1;
-        if (served < N && (c = rdp_accept(&sockfd, connections, &connected)) != NULL ){ //Listen for incoming connections
-            printf("\n[+] CONNECTED: %d --> %d\n", c->server_id, c->client_id);
+        if (connected < N && (c = rdp_accept(&sockfd, connections, &connected)) != NULL ){ //Listen for incoming connections
+            printf("\n%s[+] CONNECTED:%s %d --> %d\n",GREEN, NORM, c->server_id, c->client_id);
             connections[connected] = c; //Add connection to current connections 
             connected++;
-            served++;
             wait = 0;
         }
-
         for(int i = 0; i < connected; i++){ //For every ongoing connecions
-            if(connections[i] != NULL && connections[i]->packet_seq < packet_num){ //if there are still packets to send and if connection is not terminated
-                wait = 0;
-                Packet *data = packs[(int)connections[i]->packet_seq]; //Data to be sent to connected client
-                data->sender_id = connections[i]->server_id;
-                data->recv_id = connections[i]->client_id;
-                send_data(&sockfd, &connections[i]->client_addr, data);
-                int ACK = wait_ACK(&sockfd, data->recv_id, data->sender_id, data->pktseq);  
-                if (ACK == 0) //ACK recived from client
-                    connections[i]->packet_seq += 1;
-                if (ACK == 1){ //Termination packet from client
-                    printf("\n[-] DISCONNECTED: %d --> %d\n", connections[i]->server_id, connections[i]->client_id);
-                    free(connections[i]); 
-                    connections[i] = NULL;
-                    connected--;
-                }
+            if(connections[i]->state != 0 && connections[i]->packet_seq < packet_num){ //if there are still packets to send and if connection is not terminated
+               wait = 0;
+               Packet *data = packs[(int)connections[i]->packet_seq]; //Data to be sent to connected client
+               data->sender_id = connections[i]->server_id;
+               data->recv_id = connections[i]->client_id;
+               send_data(&sockfd, &connections[i]->client_addr, data);
+               int ACK = wait_ACK(&sockfd, data->recv_id, data->sender_id, data->pktseq);  
+               if (ACK == 0) //ACK recived from client
+                   connections[i]->packet_seq += 1;
+               if (ACK == 1){ //Termination packet from client. When a client is disconnected, state is set to 0.
+                   printf("\n%s[-] DISCONNECTED:%s %d --> %d\n", RED,NORM, connections[i]->server_id, connections[i]->client_id);
+                   connections[i]->state = 0; //Turn off connection
+                   served++;
+               }
             }
         }
         if (wait){ //While there is nothing to do
-            if(served == N) //If we have served N files we end
+            if (served >= N)
                 break;
             sleep(1);
             printf("\nWaiting for requests... \n");
         }
-    }
-    
-    
-    
+    } 
     close(sockfd);
     for (int i = 0; i < connected; i++){
-        if(connections[i] != NULL)
-            free(connections[i]);
+        free(connections[i]);
     }
     free(connections);
     for (int i = 0; i < packet_num; i++){

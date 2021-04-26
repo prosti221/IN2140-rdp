@@ -9,7 +9,10 @@
 #include <arpa/inet.h>                                                          
 #include <netinet/in.h>  
 
-#define MAX_PACKET_BYES 10
+#define MAX_PACKET_BYES 1000
+#define NORM "\x1B[0m"                                                          
+#define RED "\x1B[31m"                                                          
+#define GREEN "\x1B[32m"  
 
 char *serialize(Packet *packet){
     int packet_size = sizeof(Packet) + packet->metadata;
@@ -40,12 +43,16 @@ Packet **create_packets(char* data_bfr, int data_len, int max_bytes, int *total_
     }
     Packet **packets;
     if(data_len < max_bytes){ //If data buffer fits in a single packet
-        *total_packets = 1;
-        packets = malloc(sizeof(Packet *));
+        *total_packets = 2;
+        packets = malloc(sizeof(Packet *) * *total_packets);
         Packet *p = malloc(sizeof(Packet) + data_len);
         *p = (Packet){.flags=0x04, .pktseq=0, .ackseq=0, .unassigned=0, .sender_id=0, .recv_id=0, .metadata=data_len};
         memcpy(p->payload, data_bfr , data_len);
         packets[0] = p;
+        //Add final empty packet
+        Packet *final = malloc(sizeof(Packet));
+        *final = (Packet){.flags=0x04, .pktseq=*total_packets-1, .ackseq=0, .unassigned=0, .sender_id=0, .recv_id=0, .metadata=0};
+        packets[1] = final;
         return packets; 
     }
     int r = 0; //Remainder 
@@ -89,13 +96,13 @@ int wait_rdp_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *
         if (bytes > 0){
             Packet *p = de_serialize(buffer);
             if(p->flags == 0x10 && p->sender_id == 0 && p->recv_id == recv_ID){
-                printf("\n[+]Connection accepted by server %d\n", p->sender_id);
+                printf("\n%s[+]CONNECTED:%s %d --> %d\n",GREEN, NORM, p->recv_id ,p->sender_id);
                 ACK = 1;
                 free(p);
                 return 0;
             }
             if(p->flags == 0x20 && p->sender_id == 0 && p->recv_id == recv_ID){
-                printf("\n[-]Connection refused by server %d\n", p->sender_id);
+                printf("\n%s[-]CONNECTION REFUSED:%s %d --> %d\n",RED, NORM, p->recv_id, p->sender_id);
                 ACK = 1;
                 free(p);
                 return -1;
@@ -139,7 +146,7 @@ void send_terminate(int *sockfd, int sender_ID, int recv_ID, struct sockaddr_in 
 void send_data(int *sockfd, struct sockaddr_in *dest, Packet *data){
     char *serial = serialize(data);
     struct sockaddr_in d = *dest;
-    if (send_packet(*sockfd, (const char*)serial, sizeof(Packet) + data->metadata, 0, (const struct sockaddr *)&d, sizeof(d)) < 0) {
+    if (send_packet(*sockfd, (const char*)serial, sizeof(Packet) + data->metadata, 0, (const struct sockaddr *)&d, sizeof(d)) <= 0) {
         perror("sendto()");
         exit(-1);
     }
@@ -202,7 +209,7 @@ struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connec
                 exit(-1);                                                                                                  
             }
             Connection *c = malloc(sizeof(Connection));
-            *c = (Connection){.client_id=p->sender_id, .client_addr=client_addr, .server_id=p->recv_id, .packet_seq=0};
+            *c = (Connection){.client_id=p->sender_id, .client_addr=client_addr, .server_id=p->recv_id, .packet_seq=0, .state=1};
             free(serial);
             free(ret);
             free(p);
@@ -220,6 +227,9 @@ void print_packet(Packet *packet){
 }
 
 void print_connection(Connection *c){
+    if(c == NULL){
+        printf("\nNULL\n");
+    }
     printf("\nCONNECTED TO: %d", c->client_id);
 }
 
