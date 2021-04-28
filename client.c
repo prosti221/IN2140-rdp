@@ -52,8 +52,8 @@ int main(int argc, char **argv)
     }
     //Setting timeout
     struct timeval t;
-    t.tv_sec = 1;                                                          
-    t.tv_usec = 0;    
+    t.tv_sec = 0;                                                          
+    t.tv_usec = 900000;    
     if ( (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&t, sizeof(struct timeval))) < 0){
         perror("setsockopt()");
         exit(-1);
@@ -80,6 +80,7 @@ int main(int argc, char **argv)
         printf("#### Terminating client ####\n");
         exit(-1);
     }
+    
     while(1){
         char buffer[sizeof(Packet) + MAX_PACKET_BYTES];
         int bytes = recvfrom(sock, buffer, sizeof(Packet) + MAX_PACKET_BYTES + 1, 0, (struct sockaddr*)&from, &from_len);
