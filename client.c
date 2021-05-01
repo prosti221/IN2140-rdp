@@ -36,21 +36,19 @@ int main(int argc, char **argv)
     //File to wrtie data
     char filename[26];
     sprintf(filename, "out/kernel-file-%d", CLIENT_ID);
-    FILE *fd = fopen(filename, "wb"); //Check return on this!
-    //Socket info
+    FILE *fd;
+    //Socket info 
     int sock;
-    int current_packet = -1;
+    unsigned char current_packet = 2; 
     unsigned short port = atoi(argv[2]);
-    //unsigned short port = 8080;
-    struct sockaddr_in server, from;
-    socklen_t from_len = sizeof(from_len);
-    set_loss_probability(prob); 
-    
+    struct sockaddr_in server;
+    set_loss_probability(prob); //Setting probability
+    //Creating socket
     if( (sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ){
         perror("Socket error");
         exit(-1);
     }
-    //Setting timeout
+    //Setting up timeout
     struct timeval t;
     t.tv_sec = 0;                                                          
     t.tv_usec = 900000;    
@@ -58,20 +56,21 @@ int main(int argc, char **argv)
         perror("setsockopt()");
         exit(-1);
     }    
-   
+
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
     server.sin_addr.s_addr = inet_addr(argv[1]);
 
-    //Sending a connect request
-    Packet *connect = malloc(sizeof(Packet));
+    //Setting up a connect request
+    Packet *connect;
+    if ( (connect  = malloc(sizeof(Packet))) == NULL){
+        perror("Malloc error: ");
+        exit(-1);
+    }
     *connect = (Packet){.metadata=0, .ackseq=0, .unassigned=0, .pktseq=0, .flags=0x01, .recv_id=0, .sender_id=CLIENT_ID}; 
     char *serial = serialize(connect);
-    if (send_packet(sock, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&server, sizeof(server)) < 0) { //Sending connect request to server
-        perror("sendto()");
-        exit(2);
-    }
+    
     //Waiting for connect response from server(-1 = refused, 0 = accepted) 
     if ( (wait_rdp_accept(&sock, serial, CLIENT_ID, &server) ) != 0){
         free(serial);
@@ -80,33 +79,29 @@ int main(int argc, char **argv)
         printf("#### Terminating client ####\n");
         exit(-1);
     }
-    
+    //Check if file already exists before opening
+    if(access(filename, F_OK) == 0){ //if file already exists
+        printf("\nFile \"%s\" already exists\n", filename);
+        exit(-1);
+    }else{ //if file does not exist
+        fd = fopen(filename, "wb");
+    }
+    //Event loop
     while(1){
-        char buffer[sizeof(Packet) + MAX_PACKET_BYTES];
-        int bytes = recvfrom(sock, buffer, sizeof(Packet) + MAX_PACKET_BYTES + 1, 0, (struct sockaddr*)&from, &from_len);
-        if (bytes > 0){                                                         
-            Packet *p = de_serialize(buffer);                                   
-            if(p->flags == 0x04 && p->sender_id == 0 && p->recv_id == CLIENT_ID && p->pktseq > current_packet){
-                if(p->metadata == 0){
-                    send_terminate(&sock, p->recv_id, p->sender_id, &server); 
-                    printf("\n%s[+] File recieved:%s \"%s\"\n",GREEN, NORM, filename);
-                    printf("\n%s[-] Disconnected\n%s", RED, NORM);
-                    free(p);
-                    break;
-                }
-                current_packet = p->pktseq;
-                fwrite(&(p->payload), 1, p->metadata, fd);
-                send_ACK(&sock, p->recv_id, p->sender_id, current_packet, &server); 
-            }else if(p->flags == 0x04 && p->sender_id == 0 && p->recv_id == CLIENT_ID && p->pktseq <= current_packet){
-                send_ACK(&sock, p->recv_id, p->sender_id, current_packet, &server); //if the same packet is recived, resend ACK. 
+        Packet *p = recv_data(&sock, CLIENT_ID, &current_packet, &server);
+        if (p != NULL){                                                         
+            if(p->metadata == 0){
+                printf("\n%s[+] File recieved:%s \"%s\"\n",GREEN, NORM, filename);
+                printf("\n%s[-] Disconnected\n%s", RED, NORM);
+                free(p);
+                break;
             }
+            fwrite(&(p->payload), 1, p->metadata, fd);      //Write new packet to file
             free(p);                                                            
         }               
     }
-    
     free(serial);
     free(connect);
     fclose(fd);
     close(sock);
-
 }
