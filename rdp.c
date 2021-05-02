@@ -8,6 +8,7 @@
 #include <sys/socket.h>                                                         
 #include <arpa/inet.h>                                                          
 #include <netinet/in.h>  
+#include <time.h>
 
 #define MAX_PACKET_BYTES 1000
 #define NORM "\x1B[0m"                                                          
@@ -44,7 +45,7 @@ struct Packet *de_serialize(char *d){
     p->metadata = ntohl(p->metadata);
     return p;
 }
-Packet *recv_data(int *sockfd, int recv_ID, unsigned char *current_packet, struct sockaddr_in *resend){ //return = 0 -> no packets, return = 1 -> last empty packet
+Packet *rdp_recv_data(int *sockfd, int recv_ID, unsigned char *current_packet, struct sockaddr_in *resend){ //return = 0 -> no packets, return = 1 -> last empty packet
     struct sockaddr_in from_addr;
     socklen_t from_length = sizeof(from_addr);
     char buffer[sizeof(Packet) + MAX_PACKET_BYTES];                         
@@ -53,27 +54,31 @@ Packet *recv_data(int *sockfd, int recv_ID, unsigned char *current_packet, struc
         Packet *p = de_serialize(buffer);
         if(p->flags == 0x04 && p->sender_id == 0 && p->recv_id == recv_ID && p->pktseq != *current_packet){     //Checking if we recived a
             if(p->metadata == 0){   //If the data packet is empty we send a terminate notice
-                send_terminate(sockfd, p->recv_id, p->sender_id, resend);
+                rdp_send_terminate(sockfd, p->recv_id, p->sender_id, resend);
                 return p;
             }
-            send_ACK(sockfd, p->recv_id, p->sender_id, p->pktseq, resend);     //Send ACK
+            rdp_send_ACK(sockfd, p->recv_id, p->sender_id, p->pktseq, resend);     //Send ACK
             *current_packet = p->pktseq;
             return p;
         }else if(p->flags == 0x04 && p->sender_id == 0 && p->recv_id == recv_ID && p->pktseq == *current_packet){
-            send_ACK(sockfd, p->recv_id, p->sender_id, p->pktseq, resend);     //if the same packet is recived, resend ACK. 
+            rdp_send_ACK(sockfd, p->recv_id, p->sender_id, p->pktseq, resend);     //if the same packet is recived, resend ACK. 
             free(p);
             return NULL;
         }  
     }
     return NULL;
 } 
-int wait_rdp_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *resend){
+int rdp_wait_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *resend){
     struct sockaddr_in from_addr;
     socklen_t from_length = sizeof(from_addr);
     struct sockaddr_in re = *resend;
-    int ACK = 0;
     char buffer[sizeof(Packet)];
-    while(ACK == 0){
+    struct timeval start, end, res;
+    gettimeofday(&start, NULL);
+    gettimeofday(&end, NULL);
+    res.tv_sec = 0; 
+    res.tv_usec = 0; 
+    while(res.tv_sec < 1){
         if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&re, sizeof(re)) < 0) {
             perror("sendto()");
             exit(-1);
@@ -83,22 +88,23 @@ int wait_rdp_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *
             Packet *p = de_serialize(buffer);
             if(p->flags == 0x10 && p->sender_id == 0 && p->recv_id == recv_ID){
                 printf("\n%s[+]CONNECTED:%s %d --> %d\n",GREEN, NORM, p->recv_id ,p->sender_id);
-                ACK = 1;
                 free(p);
                 return 0;
             }
             if(p->flags == 0x20 && p->sender_id == 0 && p->recv_id == recv_ID){
                 printf("\n%s[-]CONNECTION REFUSED:%s %d --> %d\n",YEL, NORM, p->recv_id, p->sender_id);
-                ACK = 1;
                 free(p);
                 return -1;
             }
             free(p);
         }
+        gettimeofday(&end, NULL);
+        timersub(&end, &start, &res);
     } 
+    printf("\nNo response from server\n");
     return 1; 
 }
-void send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct sockaddr_in *dest){
+void rdp_send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct sockaddr_in *dest){
     Packet *p;
     if ( (p = malloc(sizeof(Packet))) == NULL){
         perror("Malloc error: ");
@@ -113,10 +119,9 @@ void send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct soc
     }
     free(p);
     free(serial);
-
 }
 
-void send_terminate(int *sockfd, int sender_ID, int recv_ID, struct sockaddr_in *dest){
+void rdp_send_terminate(int *sockfd, int sender_ID, int recv_ID, struct sockaddr_in *dest){
     Packet *p;
     if ( (p = malloc(sizeof(Packet))) == NULL){
         perror("Malloc error: ");
@@ -133,7 +138,7 @@ void send_terminate(int *sockfd, int sender_ID, int recv_ID, struct sockaddr_in 
     free(serial);
 }
 
-void send_data(int *sockfd, struct sockaddr_in *dest, char* serial){
+void rdp_send_data(int *sockfd, struct sockaddr_in *dest, char* serial){
     struct sockaddr_in d = *dest;
     Packet *data = de_serialize(serial);
     if (send_packet(*sockfd, (const char*)serial, sizeof(Packet) + data->metadata, 0, (const struct sockaddr *)&d, sizeof(d)) <= 0) {
@@ -143,7 +148,7 @@ void send_data(int *sockfd, struct sockaddr_in *dest, char* serial){
     free(data);
 }
 
-int wait_ACK(int *sockfd,char* serial,int size, int sender_ID, int recv_ID, int packet_nb, struct sockaddr_in *resend){ //sender ID is the one sending the ACK, while recv_ID is waiting
+int rdp_wait_ACK(int *sockfd,char* serial,int size, int sender_ID, int recv_ID, int packet_nb, struct sockaddr_in *resend){ //sender ID is the one sending the ACK, while recv_ID is waiting
     struct sockaddr_in from_addr;
     socklen_t from_length = sizeof(from_addr);
     struct sockaddr_in re = *resend;

@@ -1,6 +1,6 @@
-#include <stdio.h>
-#include <string.h>
-#include <arpa/inet.h>                                                          
+#ifndef RDP_H
+#define RDP_H
+
 #include <netinet/in.h> 
 
 typedef struct __attribute__((packed)) Packet{
@@ -28,20 +28,20 @@ struct Packet *de_serialize(char *d);
 
 struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connected, int *N); //Listens for connection requests and sends accept/refuse connection packet back
 
-void send_ACK(int *sockfd, int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *dest); //sends ACK
+void rdp_send_ACK(int *sockfd, int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *dest); //sends ACK
 
-void send_terminate(int *sockfd, int recv_ID, int sender_ID, struct sockaddr_in *dest); //Send terminate notice when recived final packet
+void rdp_send_terminate(int *sockfd, int recv_ID, int sender_ID, struct sockaddr_in *dest); //Send terminate notice when recived final packet
 
-void send_data(int *sockfd, struct sockaddr_in *dest, char* serial); //sends data packets
+void rdp_send_data(int *sockfd, struct sockaddr_in *dest, char* serial); //sends data packets
 
-Packet *recv_data(int *sockfd, int recv_ID, unsigned char *current_packet, struct sockaddr_in *resend); //recives packet sendt by sender
+Packet *rdp_recv_data(int *sockfd, int recv_ID, unsigned char *current_packet, struct sockaddr_in *resend); //recives packet sendt by sender
 
-int wait_ACK(int *sockfd,char* serial,int size, int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *resend); //Waits for ACK
+int rdp_wait_ACK(int *sockfd,char* serial,int size, int recv_ID, int sender_ID, int packet_nb, struct sockaddr_in *resend); //Waits for ACK
 
-int wait_rdp_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *resend); //Client waits for rdp_accept response, returns 0 if accepted, returns -1 if refused.
+int rdp_wait_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *resend); //Client waits for rdp_accept response, returns 0 if accepted, returns -1 if refused.
 
 void print_packet(Packet *packet);
 
 void print_connection(Connection *c);
 
-
+#endif

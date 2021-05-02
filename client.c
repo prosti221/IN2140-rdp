@@ -1,6 +1,5 @@
 #include <stdio.h>  
 #include <stdlib.h>
-#include "client.h"
 #include "rdp.h"
 #include "send_packet.h"                                                                                
 #include <unistd.h>
@@ -28,6 +27,7 @@ int main(int argc, char **argv)
         printf("\nInvalid loss probability. Excpected: 0 < p < 1 ");
         exit(-1);
     }
+    set_loss_probability(prob); //Setting probability
     //Generating random client ID 
     struct timeval tm;                                                      
     gettimeofday(&tm, NULL);                                                
@@ -42,7 +42,6 @@ int main(int argc, char **argv)
     unsigned char current_packet = 2; 
     unsigned short port = atoi(argv[2]);
     struct sockaddr_in server;
-    set_loss_probability(prob); //Setting probability
     //Creating socket
     if( (sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ){
         perror("Socket error");
@@ -56,7 +55,6 @@ int main(int argc, char **argv)
         perror("setsockopt()");
         exit(-1);
     }    
-
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
@@ -72,11 +70,10 @@ int main(int argc, char **argv)
     char *serial = serialize(connect);
     
     //Waiting for connect response from server(-1 = refused, 0 = accepted) 
-    if ( (wait_rdp_accept(&sock, serial, CLIENT_ID, &server) ) != 0){
+    if ( (rdp_wait_accept(&sock, serial, CLIENT_ID, &server) ) != 0){
         free(serial);
         free(connect);
         close(sock);
-        printf("#### Terminating client ####\n");
         exit(-1);
     }
     //Check if file already exists before opening
@@ -88,7 +85,7 @@ int main(int argc, char **argv)
     }
     //Event loop
     while(1){
-        Packet *p = recv_data(&sock, CLIENT_ID, &current_packet, &server);
+        Packet *p = rdp_recv_data(&sock, CLIENT_ID, &current_packet, &server);
         if (p != NULL){                                                         
             if(p->metadata == 0){
                 printf("\n%s[+] File recieved:%s \"%s\"\n",GREEN, NORM, filename);
