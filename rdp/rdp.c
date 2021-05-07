@@ -1,14 +1,13 @@
 #include <stdio.h>                                                              
 #include <stdlib.h>                                                             
 #include "rdp.h"                                                                
-#include "send_packet.h"                                                    
+#include "../send-packet/send_packet.h"                                                    
 #include <unistd.h>                                                             
 #include <string.h>                                                             
 #include <sys/types.h>                                                          
 #include <sys/socket.h>                                                         
 #include <arpa/inet.h>                                                          
 #include <netinet/in.h>  
-#include <time.h>
 
 #define MAX_PACKET_BYTES 1000
 #define NORM "\x1B[0m"                                                          
@@ -53,7 +52,7 @@ Packet *rdp_recv_data(int *sockfd, int recv_ID, unsigned char *current_packet, s
     if (bytes > 0){
         Packet *p = de_serialize(buffer);
         if(p->flags == 0x04 && p->sender_id == 0 && p->recv_id == recv_ID && p->pktseq != *current_packet){     //Checking if we recived a
-            if(p->metadata == 0){   //If the data packet is empty we send a terminate notice
+            if(p->metadata == 0){
                 rdp_send_terminate(sockfd, p->recv_id, p->sender_id, resend);
                 return p;
             }
@@ -69,15 +68,20 @@ Packet *rdp_recv_data(int *sockfd, int recv_ID, unsigned char *current_packet, s
     return NULL;
 } 
 int rdp_wait_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *resend){
+    //Sender info
     struct sockaddr_in from_addr;
     socklen_t from_length = sizeof(from_addr);
     struct sockaddr_in re = *resend;
     char buffer[sizeof(Packet)];
+
+    //Setting up timers for the client timeout 
     struct timeval start, end, res;
     gettimeofday(&start, NULL);
     gettimeofday(&end, NULL);
-    res.tv_sec = 0; 
-    res.tv_usec = 0; 
+    res.tv_sec = 0;
+    res.tv_usec = 0;
+    
+    //Sends a connection request and listens for 0x10 or 0x20, the request is sent for 1 second before terminating.
     while(res.tv_sec < 1){
         if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&re, sizeof(re)) < 0) {
             perror("sendto()");
@@ -87,12 +91,12 @@ int rdp_wait_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *
         if (bytes > 0){
             Packet *p = de_serialize(buffer);
             if(p->flags == 0x10 && p->sender_id == 0 && p->recv_id == recv_ID){
-                printf("\n%s[+]CONNECTED:%s %d --> %d\n",GREEN, NORM, p->recv_id ,p->sender_id);
+                printf("\n%s[+] CONNECTED:%s %d --> %d\n",GREEN, NORM, p->recv_id ,p->sender_id);
                 free(p);
                 return 0;
             }
             if(p->flags == 0x20 && p->sender_id == 0 && p->recv_id == recv_ID){
-                printf("\n%s[-]CONNECTION REFUSED:%s %d --> %d\n",YEL, NORM, p->recv_id, p->sender_id);
+                printf("\n%s[-] CONNECTION REFUSED:%s %d --> %d\n",YEL, NORM, p->recv_id, p->sender_id);
                 free(p);
                 return -1;
             }
@@ -100,8 +104,8 @@ int rdp_wait_accept(int *sockfd, char *serial, int recv_ID, struct sockaddr_in *
         }
         gettimeofday(&end, NULL);
         timersub(&end, &start, &res);
-    } 
-    printf("\nNo response from server\n");
+    }
+    printf("\n%s[-] CONNECTION TIMEOUT%s\n",YEL, NORM);
     return 1; 
 }
 void rdp_send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct sockaddr_in *dest){
@@ -119,6 +123,7 @@ void rdp_send_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb, struct
     }
     free(p);
     free(serial);
+
 }
 
 void rdp_send_terminate(int *sockfd, int sender_ID, int recv_ID, struct sockaddr_in *dest){
@@ -148,15 +153,14 @@ void rdp_send_data(int *sockfd, struct sockaddr_in *dest, char* serial){
     free(data);
 }
 
-int rdp_wait_ACK(int *sockfd,char* serial,int size, int sender_ID, int recv_ID, int packet_nb, struct sockaddr_in *resend){ //sender ID is the one sending the ACK, while recv_ID is waiting
+int rdp_check_ACK(int *sockfd, int sender_ID, int recv_ID, int packet_nb){
     struct sockaddr_in from_addr;
     socklen_t from_length = sizeof(from_addr);
-    struct sockaddr_in re = *resend;
     char buffer[sizeof(Packet)];
-    while(1){
         int bytes = recvfrom(*sockfd, buffer, sizeof(Packet) + MAX_PACKET_BYTES, 0, (struct sockaddr*)&from_addr, &from_length);
         if (bytes > 0){
             Packet *p = de_serialize(buffer);
+            //Checks if packet is ACK or terminate
             if(p->flags == 0x08 && p->sender_id == sender_ID && p->recv_id == recv_ID && p->ackseq == packet_nb){
                 free(p);
                 return 0;
@@ -167,11 +171,6 @@ int rdp_wait_ACK(int *sockfd,char* serial,int size, int sender_ID, int recv_ID, 
             }
             free(p);
         }
-        if (send_packet(*sockfd, (const char*)serial, sizeof(Packet) + size, 0, (const struct sockaddr *)&re, sizeof(re)) < 0){
-            perror("sendto()");
-            exit(-1);
-        }
-    }
     return -1;
 }
 
@@ -182,17 +181,19 @@ struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connec
         perror("Malloc error: ");
         exit(-1);
     }
+    //Recieve data
     struct sockaddr_in client_addr;
     socklen_t client_length = sizeof(client_addr);
     memset(&client_addr, 0, sizeof(client_addr));
-
     char buffer[sizeof(Packet)];
     int bytes = recvfrom(*sockfd, buffer, sizeof(Packet) + MAX_PACKET_BYTES, 0, (struct sockaddr*)&client_addr, &client_length);
+    //If bytes were recived, we check the flag.
     if(bytes > 0){
         p = de_serialize(buffer);
         if(p->flags == 0x01){
+            //If connection already exists, or if we are serving Nth file, refuse connection.
             for(int i = 0; i < *connected; i++){
-                if(connections[i]->client_id == p->sender_id || *connected >= *N){ //If connection already exists, or if we are serving Nth file, refuse connection.
+                if(connections[i]->client_id == p->sender_id || *connected >= *N){
                     *ret = (Packet){.flags=0x20, .metadata=0, .sender_id=p->recv_id, .recv_id=p->sender_id, .ackseq=0, .pktseq=0, .unassigned = 0};
                     char *serial = serialize(ret);
                     if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
@@ -206,6 +207,7 @@ struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connec
                     return NULL;                    
                 }  
             }
+            //Send an accept packet and add new connection to connections.
             *ret = (Packet){.flags=0x10, .metadata=0, .sender_id=p->recv_id, .recv_id=p->sender_id, .ackseq=0, .pktseq=0, .unassigned=0};
             char *serial = serialize(ret);
             if (send_packet(*sockfd, (const char*)serial, sizeof(Packet), 0, (const struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
@@ -228,17 +230,3 @@ struct Connection *rdp_accept(int *sockfd, Connection **connections, int *connec
     free(ret);
     return NULL;
 }
-
-void print_packet(Packet *packet){
-    printf("\nFlag: %x \nPKTseq: %x \nACKseq: %x\nSender ID: %d\nReciver ID: %d\nMetadata: %d\nPayload: %s\n", 
-            packet->flags, packet->pktseq, packet->ackseq, packet->sender_id, packet->recv_id, packet->metadata, packet->payload);
-}
-
-void print_connection(Connection *c){
-    if(c == NULL){
-        printf("\nNULL\n");
-    }
-    printf("\nCONNECTED TO: %d", c->client_id);
-}
-
-

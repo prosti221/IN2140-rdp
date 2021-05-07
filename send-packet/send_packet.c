@@ -36,7 +36,7 @@ ssize_t send_packet( int sock, const char* buffer, size_t size, int flags, const
     if( (buffer[0] & (0x4|0x8)) && /* We drop only data and ACK packets */
 	    (rnd < loss_probability) )
     {
-        fprintf(stderr, "Randomly dropping a packet\n");
+//        fprintf(stderr, "Randomly dropping a packet\n");
         return size;
     }
 

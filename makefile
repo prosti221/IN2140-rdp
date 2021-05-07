@@ -1,16 +1,17 @@
-params=-Wall -Wextra
-DEPS=server.c server.h rdp.h rdp.c send_packet.h send_packet.c
+PARAMS=-Wall -Wextra
+COMMON=rdp/rdp.h rdp/rdp.c send-packet/send_packet.h send-packet/send_packet.c
 
-all: $(DEPS)
-	gcc -g server.c rdp.c send_packet.c -o server
-	gcc -g client.c rdp.c send_packet.c -o client 
+ALL_DEPS=$(COMMON) server/server.h server/server.c client/client.c 
 
-server: server.h server.c rdp.h rdp.c
-	gcc $(params) -g server.c rdp.c send_packet.c -o $@
+all: $(ALL_DEPS)
+	gcc -g server/server.c rdp/rdp.c send-packet/send_packet.c -o run-server
+	gcc -g client/client.c rdp/rdp.c send-packet/send_packet.c -o run-client 
+run-server: $(COMMON) server/server.h server/server.c
+	gcc $(PARAMS) -g server/server.c rdp/rdp.c send-packet/send_packet.c -o $@
 
-client: client.c rdp.c rdp.h
-	gcc $(params) -g client.c rdp.c send_packet.c -o $@
+run-client: $(COMMON) client/client.c
+	gcc $(PARAMS) -g client/client.c rdp/rdp.c send-packet/send_packet.c -o $@
 
 clean: 
-	rm server client
+	rm run-server run-client
 	rm -rf out/kernel-file-*

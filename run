@@ -1,10 +1,16 @@
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 & 
-./client 127.0.0.1 8080 0 
+#!/bin/bash
+echo "Number of clients: "
+read clients
+echo "IP: "
+read ip
+echo "PORT: "
+read port
+echo "loss probability"
+read lp
+
+for (( counter=$clients; counter>0; counter-- ))
+do
+./run-client $ip $port $lp & 
+sleep 0.5
+done
+

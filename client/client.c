@@ -1,7 +1,7 @@
 #include <stdio.h>  
 #include <stdlib.h>
-#include "rdp.h"
-#include "send_packet.h"                                                                                
+#include "../rdp/rdp.h"
+#include "../send-packet/send_packet.h"                                                                                
 #include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
@@ -12,6 +12,7 @@
 #include <sys/time.h>
 
 #define MAX_PACKET_BYTES 1000
+
 #define NORM "\x1B[0m"                                                          
 #define RED "\x1B[31m"                                                          
 #define GREEN "\x1B[32m"  
@@ -50,7 +51,7 @@ int main(int argc, char **argv)
     //Setting up timeout
     struct timeval t;
     t.tv_sec = 0;                                                          
-    t.tv_usec = 900000;    
+    t.tv_usec = 1000;    
     if ( (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (struct timeval*)&t, sizeof(struct timeval))) < 0){
         perror("setsockopt()");
         exit(-1);
@@ -89,7 +90,7 @@ int main(int argc, char **argv)
         if (p != NULL){                                                         
             if(p->metadata == 0){
                 printf("\n%s[+] File recieved:%s \"%s\"\n",GREEN, NORM, filename);
-                printf("\n%s[-] Disconnected\n%s", RED, NORM);
+                printf("\n%s[-] DISCONNECTED\n%s", RED, NORM);
                 free(p);
                 break;
             }
