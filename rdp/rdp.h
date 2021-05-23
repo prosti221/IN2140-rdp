@@ -6,7 +6,8 @@
 typedef struct __attribute__((packed)) Packet{
     /*0x01-->connect request  
       0x02-->terminate connection  
-      0x04-->data packet  0x08-->ACK  
+      0x04-->data packet  
+      0x08-->ACK  
       0x10-->accept connect  
       0x20-->refuse connect
     */
