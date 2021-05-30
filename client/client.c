@@ -78,10 +78,10 @@ int main(int argc, char **argv)
         exit(-1);
     }
     //Check if file already exists before opening
-    if(access(filename, F_OK) == 0){ //if file already exists
+    if(access(filename, F_OK) == 0){
         printf("\nFile \"%s\" already exists\n", filename);
         exit(-1);
-    }else{ //if file does not exist
+    }else{
         fd = fopen(filename, "wb");
     }
     //Event loop
